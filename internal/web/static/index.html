@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>allpipes - GitLab Pipeline Monitor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#fef2f2',
+              500: '#fc6d26',
+              600: '#e24329',
+            },
+            darkbg: '#0f172a',
+            darkcard: '#1e293b',
+            darkborder: '#334155'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes pulse-fast {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .animate-pulse-fast {
+      animation: pulse-fast 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-orange-500 selection:text-white">
+
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-4 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
+          <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 5.48 2h.06a.42.42 0 0 1 .4.28l2.45 7.51h7.22l2.45-7.51a.42.42 0 0 1 .4-.28h.06a.42.42 0 0 1 .4.28l2.44 7.51 1.22 3.78a.84.84 0 0 1-.3.94z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              allpipes
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/30">GitLab CI</span>
+            </h1>
+          </div>
+          <p class="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+            Group: <a id="group-link" href="#" target="_blank" class="font-medium text-slate-200 hover:text-orange-400 underline transition-colors">Loading...</a>
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2.5">
+        <div id="conn-status" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Live SSE</span>
+        </div>
+
+        <button id="sound-btn" onclick="toggleSound()" title="Sound Alerts" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors">
+          <span id="sound-text">Sound: ON</span>
+        </button>
+
+        <button id="notify-btn" onclick="requestNotificationPermission()" title="Browser Notifications" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors">
+          <span id="notify-text">Notifications</span>
+        </button>
+
+        <button id="refresh-btn" onclick="triggerRefresh()" title="Refresh now" class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-orange-600/20 active:scale-95 transition-all">
+          <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-6">
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+        <span class="text-xs font-medium text-slate-400">Projects</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-projects" class="text-2xl font-bold text-white">0</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+        <span class="text-xs font-medium text-slate-400">Active</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-active" class="text-2xl font-bold text-cyan-400">0</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-blue-900/40 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-blue-950/20 to-transparent">
+        <span class="text-xs font-medium text-blue-400">Running</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-running" class="text-2xl font-bold text-blue-400">0</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-amber-900/40 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-amber-950/20 to-transparent">
+        <span class="text-xs font-medium text-amber-400">Pending</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-pending" class="text-2xl font-bold text-amber-400">0</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-rose-900/50 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-rose-950/25 to-transparent">
+        <span class="text-xs font-medium text-rose-400">Failed</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-failed" class="text-2xl font-bold text-rose-400">0</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-emerald-900/40 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-emerald-950/20 to-transparent">
+        <span class="text-xs font-medium text-emerald-400">Success</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-success" class="text-2xl font-bold text-emerald-400">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      <div class="flex items-center overflow-x-auto pb-1 md:pb-0 gap-1 text-xs font-medium">
+        <button onclick="setFilter('active')" id="tab-active" class="px-3 py-1.5 rounded-lg bg-orange-600 text-white font-semibold transition-all">
+          Active (Running & Pending)
+        </button>
+        <button onclick="setFilter('all')" id="tab-all" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all">
+          All
+        </button>
+        <button onclick="setFilter('failed')" id="tab-failed" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all">
+          Failed
+        </button>
+        <button onclick="setFilter('success')" id="tab-success" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all">
+          Success
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1 md:w-64">
+          <input
+            id="search-input"
+            type="text"
+            oninput="renderPipelines()"
+            placeholder="Filter by project, branch, sha..."
+            class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500"
+          >
+          <span class="absolute left-2.5 top-2 text-slate-500 text-xs">/</span>
+        </div>
+
+        <button onclick="toggleGrouping()" id="view-mode-btn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs text-slate-300 font-medium transition-colors">
+          Group by project: <span id="grouping-label" class="font-bold text-orange-400">ON</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="toast-banner" class="hidden transition-all duration-300 p-4 rounded-xl border flex items-center justify-between text-sm">
+      <div class="flex items-center gap-3">
+        <div>
+          <p id="toast-title" class="font-semibold text-white"></p>
+          <p id="toast-msg" class="text-xs text-slate-300 mt-0.5"></p>
+        </div>
+      </div>
+      <button onclick="hideToast()" class="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800/60">Dismiss</button>
+    </div>
+
+    <div id="pipelines-container" class="space-y-4">
+      <div class="text-center py-16 text-slate-500">
+        <p class="text-sm">Loading GitLab pipelines data...</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden mt-8">
+      <div class="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+          Recent Activity & Transition Events
+        </h3>
+        <span id="event-count" class="text-xs text-slate-500">0 events</span>
+      </div>
+      <div id="events-log" class="divide-y divide-slate-800/60 max-h-56 overflow-y-auto font-mono text-xs">
+        <div class="px-4 py-3 text-slate-500 text-center">No events recorded yet in this session.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-slate-900 bg-slate-950 py-4 px-4 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <p>allpipes • Real-time GitLab Pipeline Monitor</p>
+      <p id="last-updated-text">Last check: pending...</p>
+    </div>
+  </footer>
+
+  <script>
+    let audioCtx = null;
+    let soundEnabled = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone(freq, type, duration, delay = 0) {
+      if (!soundEnabled) return;
+      initAudio();
+      setTimeout(() => {
+        try {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        } catch(e) {}
+      }, delay);
+    }
+
+    function playSuccessChime() {
+      playTone(523.25, 'triangle', 0.2, 0);
+      playTone(659.25, 'triangle', 0.2, 100);
+      playTone(783.99, 'triangle', 0.4, 200);
+    }
+
+    function playFailAlarm() {
+      playTone(300, 'sawtooth', 0.25, 0);
+      playTone(220, 'sawtooth', 0.35, 180);
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const text = document.getElementById('sound-text');
+      if (soundEnabled) {
+        text.textContent = 'Sound: ON';
+        playSuccessChime();
+      } else {
+        text.textContent = 'Sound: OFF';
+      }
+    }
+
+    function requestNotificationPermission() {
+      if (!("Notification" in window)) {
+        alert("This browser does not support desktop notifications.");
+        return;
+      }
+      Notification.requestPermission().then(permission => {
+        const text = document.getElementById('notify-text');
+        if (permission === "granted") {
+          text.textContent = "Notifications: ON";
+          new Notification("allpipes", {
+            body: "Desktop notifications enabled successfully.",
+            icon: "https://about.gitlab.com/images/press/gitlab-logo-500.png"
+          });
+        } else {
+          text.textContent = "Notifications: BLOCKED";
+        }
+      });
+    }
+
+    function sendDesktopNotification(title, body) {
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification(title, {
+            body: body,
+            icon: "https://about.gitlab.com/images/press/gitlab-logo-500.png"
+          });
+        } catch(e) {}
+      }
+    }
+
+    let currentSnapshot = null;
+    let activeFilter = 'active';
+    let groupByProject = true;
+    let knownStatusMap = new Map();
+
+    function setFilter(filter) {
+      activeFilter = filter;
+      ['active', 'all', 'failed', 'success'].forEach(f => {
+        const btn = document.getElementById(`tab-${f}`);
+        if (f === filter) {
+          btn.className = "px-3 py-1.5 rounded-lg bg-orange-600 text-white font-semibold transition-all shadow-sm";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all";
+        }
+      });
+      renderPipelines();
+    }
+
+    function toggleGrouping() {
+      groupByProject = !groupByProject;
+      document.getElementById('grouping-label').textContent = groupByProject ? 'ON' : 'OFF';
+      renderPipelines();
+    }
+
+    function connectSSE() {
+      const connStatus = document.getElementById('conn-status');
+      const evtSource = new EventSource('/api/events');
+
+      evtSource.onopen = () => {
+        connStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Live SSE</span>';
+        connStatus.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+      };
+
+      evtSource.addEventListener('snapshot', (e) => {
+        try {
+          const snapshot = JSON.parse(e.data);
+          handleSnapshot(snapshot);
+        } catch (err) {}
+      });
+
+      evtSource.onerror = () => {
+        connStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400"></span><span>Reconnecting...</span>';
+        connStatus.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30";
+      };
+    }
+
+    async function fetchInitialStatus() {
+      try {
+        const resp = await fetch('/api/status');
+        if (resp.ok) {
+          const snapshot = await resp.json();
+          handleSnapshot(snapshot);
+        }
+      } catch (e) {}
+    }
+
+    async function triggerRefresh() {
+      const icon = document.getElementById('refresh-icon');
+      icon.classList.add('animate-spin');
+      try {
+        await fetch('/api/refresh', { method: 'POST' });
+      } catch (e) {}
+      setTimeout(() => icon.classList.remove('animate-spin'), 600);
+    }
+
+    function handleSnapshot(snapshot) {
+      currentSnapshot = snapshot;
+
+      if (snapshot.pipelines) {
+        snapshot.pipelines.forEach(p => {
+          const prev = knownStatusMap.get(p.id);
+          if (prev && prev !== p.status) {
+            if (p.status === 'failed') {
+              playFailAlarm();
+              showToast('Pipeline Failed', `Project ${p.project_name} on ref ${p.ref}`, 'rose');
+              sendDesktopNotification(`Pipeline Failed: ${p.project_name}`, `Ref ${p.ref} failed.`);
+            } else if (p.status === 'success' && prev === 'running') {
+              playSuccessChime();
+              showToast('Pipeline Succeeded', `Project ${p.project_name} on ref ${p.ref} passed.`, 'emerald');
+              sendDesktopNotification(`Pipeline Succeeded: ${p.project_name}`, `Ref ${p.ref} finished successfully.`);
+            }
+          }
+          knownStatusMap.set(p.id, p.status);
+        });
+      }
+
+      if (snapshot.group) {
+        const glink = document.getElementById('group-link');
+        glink.textContent = snapshot.group.full_path || snapshot.group.name || 'GitLab Group';
+        glink.href = snapshot.group.web_url || '#';
+      }
+
+      if (snapshot.stats) {
+        document.getElementById('stat-projects').textContent = snapshot.stats.total_projects || 0;
+        document.getElementById('stat-active').textContent = snapshot.stats.active_pipelines || 0;
+        document.getElementById('stat-running').textContent = snapshot.stats.running_count || 0;
+        document.getElementById('stat-pending').textContent = snapshot.stats.pending_count || 0;
+        document.getElementById('stat-failed').textContent = snapshot.stats.failed_count || 0;
+        document.getElementById('stat-success').textContent = snapshot.stats.success_count || 0;
+      }
+
+      const now = new Date();
+      document.getElementById('last-updated-text').textContent = `Last check: ${now.toLocaleTimeString()}`;
+
+      renderEvents(snapshot.events || []);
+      renderPipelines();
+    }
+
+    function renderEvents(events) {
+      const container = document.getElementById('events-log');
+      document.getElementById('event-count').textContent = `${events.length} event(s)`;
+      if (!events || events.length === 0) {
+        container.innerHTML = '<div class="px-4 py-3 text-slate-500 text-center">No events recorded yet in this session.</div>';
+        return;
+      }
+
+      let html = '';
+      events.slice(0, 20).forEach(evt => {
+        let tag = '[INFO]';
+        if (evt.new_status === 'failed') {
+          tag = '[FAILED]';
+        } else if (evt.new_status === 'success') {
+          tag = '[SUCCESS]';
+        } else if (evt.new_status === 'running') {
+          tag = '[RUNNING]';
+        }
+
+        const timeStr = new Date(evt.timestamp).toLocaleTimeString();
+        html += `
+          <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs hover:bg-slate-800/30 transition-colors">
+            <div class="flex items-center gap-2 overflow-hidden">
+              <span class="text-slate-400 font-bold">${tag}</span>
+              <span class="text-slate-300 truncate font-sans">${escapeHtml(evt.message)}</span>
+            </div>
+            <span class="text-slate-500 whitespace-nowrap text-[11px]">${timeStr}</span>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderPipelines() {
+      const container = document.getElementById('pipelines-container');
+      if (!currentSnapshot || !currentSnapshot.pipelines) return;
+
+      const searchTerm = (document.getElementById('search-input').value || '').toLowerCase().trim();
+
+      let list = currentSnapshot.pipelines.filter(p => {
+        if (activeFilter === 'active') {
+          const isActive = p.status === 'running' || p.status === 'pending' || p.status === 'preparing' || p.status === 'waiting_for_resource';
+          if (!isActive) return false;
+        } else if (activeFilter === 'failed') {
+          if (p.status !== 'failed') return false;
+        } else if (activeFilter === 'success') {
+          if (p.status !== 'success') return false;
+        }
+
+        if (searchTerm) {
+          const proj = (p.project_name || '').toLowerCase();
+          const ref = (p.ref || '').toLowerCase();
+          const sha = (p.sha || '').toLowerCase();
+          const author = (p.user ? p.user.name + ' ' + p.user.username : '').toLowerCase();
+          const idStr = String(p.id);
+          if (!proj.includes(searchTerm) && !ref.includes(searchTerm) && !sha.includes(searchTerm) && !author.includes(searchTerm) && !idStr.includes(searchTerm)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500">
+            <p class="font-medium text-slate-300">No pipelines found for the current filter.</p>
+            <p class="text-xs text-slate-500 mt-1">Try switching tabs or clearing the search query.</p>
+          </div>
+        `;
+        return;
+      }
+
+      if (groupByProject) {
+        const groups = {};
+        list.forEach(p => {
+          const key = p.project_name || 'Unknown';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(p);
+        });
+
+        let html = '';
+        for (const [projectName, pList] of Object.entries(groups)) {
+          const first = pList[0];
+          html += `
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+              <div class="px-4 py-3 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <a href="${first.project_web_url || '#'}" target="_blank" class="font-bold text-white text-sm hover:text-orange-400 transition-colors">
+                    ${escapeHtml(projectName)}
+                  </a>
+                  <span class="text-xs text-slate-500">(${first.project_path || ''})</span>
+                </div>
+                <span class="text-xs text-slate-400 font-medium">${pList.length} pipeline(s)</span>
+              </div>
+              <div class="divide-y divide-slate-800">
+                ${pList.map(p => renderPipelineRow(p)).join('')}
+              </div>
+            </div>
+          `;
+        }
+        container.innerHTML = html;
+      } else {
+        let html = `
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm divide-y divide-slate-800">
+            ${list.map(p => renderPipelineRow(p, true)).join('')}
+          </div>
+        `;
+        container.innerHTML = html;
+      }
+    }
+
+    function renderPipelineRow(p, showProject = false) {
+      const statusBadge = getStatusBadge(p.status);
+      const durationStr = formatElapsed(p);
+      const isRunning = p.status === 'running';
+
+      return `
+        <div class="p-4 hover:bg-slate-850 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors ${isRunning ? 'bg-blue-950/10' : ''}">
+          <div class="flex items-start md:items-center gap-3 flex-1 min-w-0">
+            <div class="flex-shrink-0">
+              ${statusBadge}
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                ${showProject ? `
+                  <a href="${p.project_web_url || '#'}" target="_blank" class="font-bold text-white text-sm hover:text-orange-400 transition-colors">
+                    ${escapeHtml(p.project_name)}
+                  </a>
+                  <span class="text-slate-600">•</span>
+                ` : ''}
+                <a href="${p.web_url}" target="_blank" class="font-mono text-xs font-semibold text-orange-400 hover:underline">
+                  #${p.id}
+                </a>
+                <span class="text-slate-600">•</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-xs font-medium text-slate-200 truncate max-w-xs" title="${p.ref}">
+                  <span class="truncate">${escapeHtml(p.ref)}</span>
+                </span>
+                <span class="font-mono text-xs text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60" title="${p.sha}">
+                  ${p.sha ? p.sha.substring(0, 8) : ''}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2 mt-1 text-xs text-slate-400">
+                ${p.user ? `
+                  <span class="flex items-center gap-1.5 text-slate-300">
+                    ${p.user.avatar_url ? `<img src="${p.user.avatar_url}" class="w-4 h-4 rounded-full" alt="">` : ''}
+                    <span>${escapeHtml(p.user.name || p.user.username)}</span>
+                  </span>
+                  <span class="text-slate-600">•</span>
+                ` : ''}
+                <span>Started ${timeAgo(p.created_at)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-4 self-end md:self-center flex-shrink-0">
+            <div class="text-right">
+              <span class="text-xs font-mono font-semibold ${isRunning ? 'text-blue-400 animate-pulse' : 'text-slate-300'}">
+                ${durationStr}
+              </span>
+              <div class="text-[10px] text-slate-500 mt-0.5">
+                ${p.source ? `via ${p.source}` : 'pipeline'}
+              </div>
+            </div>
+
+            <a href="${p.web_url}" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1 transition-all">
+              <span>View</span>
+            </a>
+          </div>
+        </div>
+      `;
+    }
+
+    function getStatusBadge(status) {
+      switch (status) {
+        case 'running':
+          return `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+              <span class="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
+              RUNNING
+            </span>
+          `;
+        case 'pending':
+        case 'preparing':
+        case 'waiting_for_resource':
+          return `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              PENDING
+            </span>
+          `;
+        case 'success':
+          return `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              SUCCESS
+            </span>
+          `;
+        case 'failed':
+          return `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
+              FAILED
+            </span>
+          `;
+        case 'canceled':
+          return `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-700/50 text-slate-400 border border-slate-600/40">
+              CANCELED
+            </span>
+          `;
+        default:
+          return `
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400">
+              ${status ? status.toUpperCase() : 'UNKNOWN'}
+            </span>
+          `;
+      }
+    }
+
+    function formatElapsed(p) {
+      if (p.duration && p.duration > 0) {
+        const m = Math.floor(p.duration / 60);
+        const s = p.duration % 60;
+        return `${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+      }
+      if (p.status === 'running') {
+        const start = p.started_at ? new Date(p.started_at) : new Date(p.created_at);
+        const diffSec = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
+        const m = Math.floor(diffSec / 60);
+        const s = diffSec % 60;
+        return `${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+      }
+      if (p.status === 'pending') {
+        return 'queued';
+      }
+      return '-';
+    }
+
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diffSec < 60) return `${diffSec}s ago`;
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffH = Math.floor(diffMin / 60);
+      if (diffH < 24) return `${diffH}h ago`;
+      return d.toLocaleDateString();
+    }
+
+    function showToast(title, msg, color) {
+      const banner = document.getElementById('toast-banner');
+      const titleEl = document.getElementById('toast-title');
+      const msgEl = document.getElementById('toast-msg');
+      titleEl.textContent = title;
+      msgEl.textContent = msg;
+
+      banner.className = `p-4 rounded-xl border flex items-center justify-between text-sm shadow-xl transition-all duration-300 ${
+        color === 'rose'
+          ? 'bg-rose-950/80 border-rose-700 text-rose-200'
+          : 'bg-emerald-950/80 border-emerald-700 text-emerald-200'
+      }`;
+      banner.classList.remove('hidden');
+
+      setTimeout(() => {
+        hideToast();
+      }, 8000);
+    }
+
+    function hideToast() {
+      const banner = document.getElementById('toast-banner');
+      banner.classList.add('hidden');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, function(m) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;'
+        }[m];
+      });
+    }
+
+    setInterval(() => {
+      if (currentSnapshot && currentSnapshot.pipelines) {
+        const hasRunning = currentSnapshot.pipelines.some(p => p.status === 'running');
+        if (hasRunning) {
+          renderPipelines();
+        }
+      }
+    }, 1000);
+
+    fetchInitialStatus();
+    connectSSE();
+  </script>
+</body>
+</html>
