@@ -1,120 +1,90 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"allpipes/internal/gitlab"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 var (
-	GitLabOrange = lipgloss.Color("#fc6d26")
-	GitLabRed    = lipgloss.Color("#e24329")
-	DarkGray     = lipgloss.Color("#1e293b")
-	BorderGray   = lipgloss.Color("#334155")
-	LightGray    = lipgloss.Color("#94a3b8")
-	TextWhite    = lipgloss.Color("#f8fafc")
+	colorInk    = lipgloss.AdaptiveColor{Light: "#1b2023", Dark: "#e3e7e8"}
+	colorMuted  = lipgloss.AdaptiveColor{Light: "#69747a", Dark: "#879297"}
+	colorFaint  = lipgloss.AdaptiveColor{Light: "#c5cdd0", Dark: "#343c40"}
+	colorSelect = lipgloss.AdaptiveColor{Light: "#e1e8eb", Dark: "#1f292e"}
 
-	ColorRunning  = lipgloss.Color("#38bdf8")
-	ColorPending  = lipgloss.Color("#fbbf24")
-	ColorSuccess  = lipgloss.Color("#34d399")
-	ColorFailed   = lipgloss.Color("#f87171")
-	ColorCanceled = lipgloss.Color("#64748b")
+	colorRunning = lipgloss.AdaptiveColor{Light: "#1766c2", Dark: "#5ea8f2"}
+	colorQueued  = lipgloss.AdaptiveColor{Light: "#a3670b", Dark: "#e0aa4c"}
+	colorFailed  = lipgloss.AdaptiveColor{Light: "#c3352a", Dark: "#f0705f"}
+	colorPassed  = lipgloss.AdaptiveColor{Light: "#1c7c44", Dark: "#56c287"}
+	colorOther   = lipgloss.AdaptiveColor{Light: "#7d878c", Dark: "#7a858a"}
 
-	HeaderTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("#ffffff")).
-				Background(GitLabOrange).
-				Padding(0, 1)
-
-	GroupBadgeStyle = lipgloss.NewStyle().
-			Foreground(GitLabOrange).
-			Bold(true)
-
-	StatPillBase = lipgloss.NewStyle().
-			Padding(0, 1).
-			MarginRight(1).
-			Bold(true)
-
-	StatRunningStyle = StatPillBase.Copy().
-				Foreground(ColorRunning).
-				Background(lipgloss.Color("#0c4a6e"))
-
-	StatPendingStyle = StatPillBase.Copy().
-				Foreground(ColorPending).
-				Background(lipgloss.Color("#451a03"))
-
-	StatFailedStyle = StatPillBase.Copy().
-				Foreground(ColorFailed).
-				Background(lipgloss.Color("#450a0a"))
-
-	StatSuccessStyle = StatPillBase.Copy().
-				Foreground(ColorSuccess).
-				Background(lipgloss.Color("#022c22"))
-
-	StatProjectsStyle = StatPillBase.Copy().
-				Foreground(LightGray).
-				Background(lipgloss.Color("#1e293b"))
-
-	ActiveTabStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(TextWhite).
-			Background(GitLabOrange).
-			Padding(0, 1)
-
-	InactiveTabStyle = lipgloss.NewStyle().
-				Foreground(LightGray).
-				Padding(0, 1)
-
-	TableHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(LightGray).
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderBottom(true).
-				BorderForeground(BorderGray)
-
-	RowStyle = lipgloss.NewStyle().
-			Padding(0, 0)
-
-	SelectedRowStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#1e293b")).
-				Bold(true)
-
-	BadgeRunning = lipgloss.NewStyle().
-			Foreground(ColorRunning).
-			Bold(true)
-
-	BadgePending = lipgloss.NewStyle().
-			Foreground(ColorPending).
-			Bold(true)
-
-	BadgeSuccess = lipgloss.NewStyle().
-			Foreground(ColorSuccess).
-			Bold(true)
-
-	BadgeFailed = lipgloss.NewStyle().
-			Foreground(ColorFailed).
-			Bold(true)
-
-	BadgeCanceled = lipgloss.NewStyle().
-			Foreground(ColorCanceled)
-
-	ToastFailStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(lipgloss.Color("#b91c1c")).
-			Padding(0, 1)
-
-	ToastSuccessStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(lipgloss.Color("#047857")).
-			Padding(0, 1)
-
-	FooterKeyStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(GitLabOrange)
-
-	FooterDescStyle = lipgloss.NewStyle().
-			Foreground(LightGray)
-
-	DetailBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(BorderGray).
-			Padding(0, 1)
+	styleInk   = lipgloss.NewStyle().Foreground(colorInk)
+	styleBold  = styleInk.Bold(true)
+	styleMuted = lipgloss.NewStyle().Foreground(colorMuted)
+	styleFaint = lipgloss.NewStyle().Foreground(colorFaint)
+	styleLink  = styleMuted.Underline(true)
+	styleTab   = styleMuted.Padding(0, 1)
+	styleTabOn = styleBold.Background(colorSelect).Padding(0, 1)
 )
+
+func categoryColor(c gitlab.Category) lipgloss.AdaptiveColor {
+	switch c {
+	case gitlab.CategoryRunning:
+		return colorRunning
+	case gitlab.CategoryQueued:
+		return colorQueued
+	case gitlab.CategoryFailed:
+		return colorFailed
+	case gitlab.CategoryPassed:
+		return colorPassed
+	default:
+		return colorOther
+	}
+}
+
+var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func statusMark(status string, frame int) (glyph, label string) {
+	switch status {
+	case "running":
+		return spinner[frame%len(spinner)], "running"
+	case "canceling":
+		return spinner[frame%len(spinner)], "canceling"
+	case "created", "pending", "preparing":
+		return "◌", status
+	case "waiting_for_resource":
+		return "◌", "waiting"
+	case "waiting_for_callback":
+		return "◌", "callback"
+	case "success":
+		return "✓", "passed"
+	case "failed":
+		return "✕", "failed"
+	case "canceled":
+		return "⊘", "canceled"
+	case "skipped":
+		return "»", "skipped"
+	case "manual":
+		return "▸", "manual"
+	case "scheduled":
+		return "◷", "scheduled"
+	default:
+		return "·", status
+	}
+}
+
+var sourceLabels = map[string]string{
+	"merge_request_event":           "MR",
+	"parent_pipeline":               "child",
+	"pipeline":                      "upstream",
+	"external_pull_request_event":   "PR",
+	"ondemand_dast_scan":            "dast",
+	"security_orchestration_policy": "policy",
+}
+
+func sourceLabel(source string) string {
+	if l, ok := sourceLabels[source]; ok {
+		return l
+	}
+	return source
+}

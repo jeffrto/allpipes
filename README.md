@@ -1,80 +1,70 @@
 # allpipes
 
-Real-time GitLab pipeline monitor for all projects within a GitLab group, supporting both terminal user interface (TUI) and web dashboard modes.
+Watch the CI pipelines of every project in a GitLab group, live, from the terminal or a browser.
+
+allpipes polls the latest pipelines of each project in the group, shows who triggered them, how long they ran, and alerts you when one passes or fails.
 
 ## Requirements
 
-- Go 1.22 or higher
-- GitLab personal or group access token with `read_api` scope (required for private or internal projects)
+- Go 1.26 or newer to build
+- A GitLab personal or group access token with the `read_api` scope. Public groups work without one, but anonymous requests get a much lower rate limit.
 
 ## Build
-
-Compile the binary:
 
 ```bash
 go build -o allpipes ./cmd/allpipes
 ```
 
-## Configuration
-
-Settings can be provided via command-line flags or a `.env` file in the current working directory.
-
-### Environment Variables
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `GITLAB_GROUP` | `""` | GitLab group path or ID |
-| `GITLAB_TOKEN` | `""` | GitLab access token with `read_api` scope |
-| `GITLAB_URL` | `https://gitlab.com` | Base URL of the GitLab instance |
-| `MODE` | `tui` | Interface mode (`tui` or `web`) |
-| `POLL_INTERVAL` | `10s` | Polling frequency |
-| `PORT` | `8080` | Port for the web server |
-| `HOST` | `0.0.0.0` | Host interface for the web server |
-| `INCLUDE_SUBGROUPS` | `true` | Include projects in subgroups |
-| `PIPELINES_PER_PROJECT` | `3` | Number of recent pipelines to fetch per project |
-| `CONCURRENCY` | `10` | Maximum concurrent API requests |
-
-### CLI Options
-
-| Flag | Default | Description |
-| :--- | :--- | :--- |
-| `-group` | `""` | GitLab group path or ID |
-| `-token` | `""` | GitLab access token |
-| `-tui` | `true` | Run in TUI mode |
-| `-web` | `false` | Run in Web dashboard mode |
-| `-url` | `https://gitlab.com` | GitLab base URL |
-| `-interval` | `10s` | Polling interval |
-| `-port` | `8080` | Web dashboard port |
-| `-host` | `0.0.0.0` | Web dashboard host |
-| `-subgroups` | `true` | Include projects in subgroups |
-| `-recent` | `3` | Recent pipelines per project |
-
 ## Usage
 
-### TUI Mode
-
-Run in the terminal:
-
 ```bash
+# Terminal UI
 ./allpipes -group my-group -token glpat-xxxxxxxxxxxx
+
+# Web dashboard on http://127.0.0.1:8080
+./allpipes -group my-group -token glpat-xxxxxxxxxxxx -web
 ```
 
-#### Keybindings
+The group can be a path (`acme/platform`), a numeric ID, or a URL copied from the browser. On a self-hosted instance, also pass `-url https://gitlab.example.com`.
 
-- `Up` / `Down` or `j` / `k`: Navigate through pipelines
-- `Enter` or `o`: Open pipeline in default web browser
-- `p`: Open project in default web browser
-- `Tab` or `1` - `4`: Switch filters (Active, All, Failed, Success)
-- `/`: Filter by text (project, branch, SHA, author)
-- `r`: Force immediate refresh
-- `q`: Quit
+If the group or token is wrong, allpipes exits right away and says why. Problems while polling (rate limits, timeouts, projects GitLab refuses to serve) show up as a banner in both interfaces.
 
-### Web Mode
+### Terminal UI keys
 
-Start the web server:
+| Key | Action |
+| :--- | :--- |
+| `↑` `↓` / `j` `k` | Move the selection |
+| `PgUp` `PgDn`, `g` `G` | Jump a page, to the top or bottom |
+| `Tab` / `1`–`4` | Switch view: All, Active, Failed, Passed |
+| `/` | Filter by project, branch, SHA or author (`Esc` clears) |
+| `Enter` / `o` | Open the pipeline in the browser |
+| `p` | Open the project in the browser |
+| `r` | Poll GitLab now |
+| `q` | Quit |
 
-```bash
-./allpipes -group my-group -token glpat-xxxxxxxxxxxx -web -port 8080
-```
+### Web dashboard
 
-Open `http://localhost:8080` in your web browser. Real-time updates are streamed via Server-Sent Events (SSE).
+Updates stream over Server-Sent Events. The page has the same views and filter (`/`, `1`–`4`, `r` work as shortcuts), can group pipelines by project, keeps a log of status changes, and can play a sound or show a desktop notification when a pipeline passes or fails.
+
+The server listens on `127.0.0.1` by default. Use `-host 0.0.0.0` only on a trusted network: the dashboard has no login and shows pipelines from private projects.
+
+## Configuration
+
+Every flag has an environment variable, which can also live in a `.env` file in the working directory. Flags take precedence.
+
+| Flag | Variable | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `-group` | `GITLAB_GROUP` | | Group path, ID or URL |
+| `-token` | `GITLAB_TOKEN` | | Access token with `read_api` |
+| `-url` | `GITLAB_URL` | `https://gitlab.com` | GitLab base URL |
+| `-tui` / `-web` | `MODE` | `tui` | Interface (`tui` or `web`) |
+| `-interval` | `POLL_INTERVAL` | `10s` | Polling interval, at least `2s` (bare numbers are seconds) |
+| `-subgroups` | `INCLUDE_SUBGROUPS` | `true` | Include projects in subgroups |
+| `-recent` | `PIPELINES_PER_PROJECT` | `3` | Latest pipelines tracked per project |
+| `-concurrency` | `CONCURRENCY` | `8` | Maximum concurrent API requests |
+| `-host` | `HOST` | `127.0.0.1` | Web dashboard listen address |
+| `-port` | `PORT` | `8080` | Web dashboard port |
+
+### API usage
+
+Projects with a pipeline that is running or finished in the last 15 minutes are polled every interval; idle projects are checked about six times less often, and `r` / Refresh polls everything. Pipeline details (author, duration) are fetched only when a pipeline changes. If GitLab answers with `429 Too Many Requests`, allpipes backs off until it recovers.

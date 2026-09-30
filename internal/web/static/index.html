@@ -1,708 +1,735 @@
-<!DOCTYPE html>
-<html lang="en" class="dark">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>allpipes - GitLab Pipeline Monitor</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#fef2f2',
-              500: '#fc6d26',
-              600: '#e24329',
-            },
-            darkbg: '#0f172a',
-            darkcard: '#1e293b',
-            darkborder: '#334155'
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    @keyframes pulse-fast {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-    .animate-pulse-fast {
-      animation: pulse-fast 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #0f172a;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #334155;
-      border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #475569;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>allpipes</title>
+<link rel="icon" id="favicon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@500;600&family=Overpass:wght@400;600;700&family=Overpass+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --paper: #eef1f1;
+  --surface: #f8faf9;
+  --ink: #161b1e;
+  --ink-2: #4b5559;
+  --muted: #737d83;
+  --rule: #d3d9da;
+  --hover: #e4e9ea;
+  --run: #1766c2;
+  --queue: #a3670b;
+  --fail: #c3352a;
+  --pass: #1c7c44;
+  --idle: #7d878c;
+  --font-mark: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-ui: "Overpass", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-data: "Overpass Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101416;
+    --surface: #161b1e;
+    --ink: #e3e8e9;
+    --ink-2: #aab4b8;
+    --muted: #768186;
+    --rule: #263034;
+    --hover: #1a2226;
+    --run: #5ea8f2;
+    --queue: #e0aa4c;
+    --fail: #ef6c5d;
+    --pass: #53bf84;
+    --idle: #7f8a8f;
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.45 var(--font-ui); }
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1760px; margin: 0 auto; padding-inline: clamp(16px, 3vw, 36px); }
+.mono { font-family: var(--font-data); }
+.muted { color: var(--muted); }
+
+.c-running { --c: var(--run); }
+.c-queued { --c: var(--queue); }
+.c-failed { --c: var(--fail); }
+.c-passed { --c: var(--pass); }
+.c-other { --c: var(--idle); }
+
+.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--rule); }
+.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding-block: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand svg { width: 22px; height: 22px; flex: none; }
+.wordmark { font: 600 16px/1 var(--font-mark); letter-spacing: -0.03em; }
+.slash { color: var(--muted); font: 16px/1 var(--font-mark); }
+.group { font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conn { display: flex; align-items: center; gap: 8px; margin-left: auto; font: 13px/1 var(--font-data); color: var(--muted); white-space: nowrap; }
+.conn i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
+.actions { display: flex; gap: 8px; }
+.chip, .btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px 5px; border-radius: 3px; font-size: 13.5px; font-weight: 600; line-height: 1.2; }
+.chip { border: 1px solid var(--rule); background: transparent; color: var(--ink-2); }
+.chip:hover { border-color: var(--muted); color: var(--ink); }
+.chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.chip i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; margin-top: -2px; }
+.chip[aria-pressed="true"] i { background: var(--pass); border-color: var(--pass); }
+.chip:disabled { opacity: .5; cursor: not-allowed; }
+.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--paper); }
+.btn:hover { background: var(--ink-2); border-color: var(--ink-2); }
+.btn svg { width: 14px; height: 14px; margin-top: -2px; }
+.btn.busy svg { animation: spin .8s linear infinite; }
+
+.alert { display: flex; gap: 10px; align-items: baseline; margin-top: 18px; padding: 10px 14px 8px; border: 1px solid color-mix(in srgb, var(--fail) 45%, transparent); background: color-mix(in srgb, var(--fail) 8%, var(--paper)); border-radius: 3px; font-size: 14px; }
+.alert strong { color: var(--fail); white-space: nowrap; }
+.alert span { min-width: 0; overflow-wrap: anywhere; }
+
+.gauge { display: grid; gap: 14px; padding-block: 24px 20px; }
+.pipe { display: flex; gap: 3px; height: 14px; border-radius: 7px; overflow: hidden; background: var(--rule); }
+.pipe span { flex: var(--n) 1 0; min-width: 8px; background-color: var(--c); background-image: linear-gradient(to bottom, rgb(255 255 255 / .32), rgb(255 255 255 / 0) 55%, rgb(0 0 0 / .12)); }
+.pipe span.flow { background-image: linear-gradient(to bottom, rgb(255 255 255 / .32), rgb(255 255 255 / 0) 55%, rgb(0 0 0 / .12)), repeating-linear-gradient(90deg, rgb(255 255 255 / 0) 0 10px, rgb(255 255 255 / .38) 10px 14px); animation: flow .9s linear infinite; }
+@keyframes flow { from { background-position: 0 0, 0 0; } to { background-position: 0 0, 14px 0; } }
+.readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 30px; }
+.tally { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; padding: 0; list-style: none; }
+.tally li { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: 13.5px; }
+.tally b { font: 500 24px/1 var(--font-mark); color: var(--c); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.tally li.zero b { color: var(--rule); }
+.scope { margin: 0 0 0 auto; font: 13px var(--font-data); color: var(--muted); }
+
+.board { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; padding-bottom: 56px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; }
+.tab { border: 0; background: none; padding: 8px 11px 6px; border-radius: 3px; color: var(--ink-2); font-weight: 600; font-size: 14.5px; }
+.tab:hover { background: var(--hover); }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.tab span { margin-left: 7px; font: 12.5px var(--font-data); opacity: .7; font-variant-numeric: tabular-nums; }
+.search { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: 0 1 300px; min-width: 200px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+.search:focus-within { border-color: var(--ink); }
+.search kbd { font: 11.5px/1.5 var(--font-data); color: var(--muted); border: 1px solid var(--rule); border-radius: 2px; padding: 0 5px; }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ink); font: 14px var(--font-ui); padding: 8px 0 6px; }
+.search input::placeholder { color: var(--muted); }
+.toggle { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.toggle input { accent-color: var(--ink); margin: 0 0 2px; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { padding: 14px 10px 8px; text-align: left; font: 600 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+td { padding: 9px 10px 7px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+tbody tr:hover td { background: var(--hover); }
+.num { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+td.live { color: var(--run); }
+.st { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 1px 6px; border-radius: 3px; color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); font-size: 12.5px; font-weight: 700; line-height: 1.5; }
+.st svg { width: 12px; height: 12px; flex: none; margin-top: -2px; }
+.st.spin svg { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.proj { display: inline-block; max-width: 30ch; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+.proj .ns { color: var(--muted); }
+.proj b { font-weight: 700; }
+.refcell { display: flex; align-items: baseline; gap: 10px; }
+.ref { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; font: 13.5px var(--font-data); }
+.sha { font: 12.5px var(--font-data); color: var(--muted); }
+.pid { font: 13.5px var(--font-data); color: var(--ink-2); }
+.who { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+tr.empty td { padding: 56px 0; text-align: center; color: var(--muted); white-space: normal; }
+tr.empty:hover td { background: none; }
+tr.head th { padding: 22px 10px 8px; text-transform: none; letter-spacing: 0; font: 600 14.5px/1.3 var(--font-ui); color: var(--ink); border-bottom: 1px solid var(--rule); }
+tr.head .count { margin-left: 10px; font: 12.5px var(--font-data); color: var(--muted); }
+.history { display: inline-flex; gap: 3px; margin-left: 14px; vertical-align: 1px; }
+.history i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); }
+.grid.grouped .c-project { display: none; }
+
+.log { position: sticky; top: 72px; max-height: calc(100vh - 96px); overflow: auto; padding-left: 24px; border-left: 1px solid var(--rule); }
+.log h2 { display: flex; justify-content: space-between; margin: 12px 0 6px; font: 600 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.log h2 span { font-family: var(--font-data); letter-spacing: 0; }
+.log ol { margin: 0; padding: 0; list-style: none; }
+.log li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1px 12px; padding: 10px 0 8px; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
+.log time { grid-row: span 2; font: 12px/1.7 var(--font-data); color: var(--muted); }
+.log .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log .what .mono { margin-left: 6px; font-size: 12.5px; color: var(--muted); }
+.log .how { font: 12.5px var(--font-data); color: var(--muted); }
+.log .how span { color: var(--c); font-weight: 600; }
+.log li.none { display: block; padding: 14px 0; color: var(--muted); border: 0; }
+
+.toasts { position: fixed; right: 16px; bottom: 16px; z-index: 10; display: grid; gap: 8px; width: min(400px, calc(100vw - 32px)); }
+.toast { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 12px 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; box-shadow: 0 10px 30px rgb(0 0 0 / .14); animation: rise .18s ease-out; }
+.toast > svg { width: 16px; height: 16px; color: var(--c); margin-top: -2px; }
+.toast strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast strong em { font-style: normal; color: var(--c); }
+.toast small { display: block; font: 12.5px var(--font-data); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast a { font-size: 13.5px; font-weight: 600; }
+.toast button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 4px; }
+@keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+
+@media (max-width: 1680px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .log { position: static; max-height: none; overflow: visible; padding: 8px 0 0; border-left: 0; border-top: 2px solid var(--ink); }
+}
+@media (max-width: 1180px) {
+  .c-src { display: none; }
+}
+@media (max-width: 900px) {
+  .c-author, .c-upd { display: none; }
+}
+@media (max-width: 760px) {
+  .c-pid, .sha { display: none; }
+  .proj { max-width: 18ch; }
+  .ref { max-width: 12ch; }
+  .conn { margin-left: 0; order: 3; width: 100%; }
+  .search { flex-basis: 100%; margin-left: 0; }
+  .scope { margin-left: 0; }
+  .tally { gap: 8px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+}
+</style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-orange-500 selection:text-white">
+<body>
 
-  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-4 lg:px-8 py-3.5">
-    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
-          <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 5.48 2h.06a.42.42 0 0 1 .4.28l2.45 7.51h7.22l2.45-7.51a.42.42 0 0 1 .4-.28h.06a.42.42 0 0 1 .4.28l2.44 7.51 1.22 3.78a.84.84 0 0 1-.3.94z"/>
-          </svg>
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-              allpipes
-              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/30">GitLab CI</span>
-            </h1>
-          </div>
-          <p class="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-            Group: <a id="group-link" href="#" target="_blank" class="font-medium text-slate-200 hover:text-orange-400 underline transition-colors">Loading...</a>
-          </p>
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2.5">
-        <div id="conn-status" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>Live SSE</span>
-        </div>
-
-        <button id="sound-btn" onclick="toggleSound()" title="Sound Alerts" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors">
-          <span id="sound-text">Sound: ON</span>
-        </button>
-
-        <button id="notify-btn" onclick="requestNotificationPermission()" title="Browser Notifications" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors">
-          <span id="notify-text">Notifications</span>
-        </button>
-
-        <button id="refresh-btn" onclick="triggerRefresh()" title="Refresh now" class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-orange-600/20 active:scale-95 transition-all">
-          <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-          </svg>
-          <span>Refresh</span>
-        </button>
-      </div>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3.5 6H9a5 5 0 0 1 5 5v6.5" stroke-width="3.6"/><path d="M2.5 2v8M10 17.5h8" stroke-width="2.2"/></svg>
+      <span class="wordmark">allpipes</span>
+      <span class="slash">/</span>
+      <a id="group" class="group" target="_blank" rel="noopener">…</a>
     </div>
-  </header>
-
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-6">
-
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-        <span class="text-xs font-medium text-slate-400">Projects</span>
-        <div class="mt-2 flex items-baseline justify-between">
-          <span id="stat-projects" class="text-2xl font-bold text-white">0</span>
-        </div>
-      </div>
-
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-        <span class="text-xs font-medium text-slate-400">Active</span>
-        <div class="mt-2 flex items-baseline justify-between">
-          <span id="stat-active" class="text-2xl font-bold text-cyan-400">0</span>
-        </div>
-      </div>
-
-      <div class="bg-slate-900 border border-blue-900/40 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-blue-950/20 to-transparent">
-        <span class="text-xs font-medium text-blue-400">Running</span>
-        <div class="mt-2 flex items-baseline justify-between">
-          <span id="stat-running" class="text-2xl font-bold text-blue-400">0</span>
-        </div>
-      </div>
-
-      <div class="bg-slate-900 border border-amber-900/40 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-amber-950/20 to-transparent">
-        <span class="text-xs font-medium text-amber-400">Pending</span>
-        <div class="mt-2 flex items-baseline justify-between">
-          <span id="stat-pending" class="text-2xl font-bold text-amber-400">0</span>
-        </div>
-      </div>
-
-      <div class="bg-slate-900 border border-rose-900/50 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-rose-950/25 to-transparent">
-        <span class="text-xs font-medium text-rose-400">Failed</span>
-        <div class="mt-2 flex items-baseline justify-between">
-          <span id="stat-failed" class="text-2xl font-bold text-rose-400">0</span>
-        </div>
-      </div>
-
-      <div class="bg-slate-900 border border-emerald-900/40 rounded-xl p-3.5 flex flex-col justify-between bg-gradient-to-b from-emerald-950/20 to-transparent">
-        <span class="text-xs font-medium text-emerald-400">Success</span>
-        <div class="mt-2 flex items-baseline justify-between">
-          <span id="stat-success" class="text-2xl font-bold text-emerald-400">0</span>
-        </div>
-      </div>
+    <div class="conn" id="conn"><i></i><span id="conn-text">Connecting</span></div>
+    <div class="actions">
+      <button type="button" class="chip" id="sound-btn" aria-pressed="false"><i></i>Sound</button>
+      <button type="button" class="chip" id="alerts-btn" aria-pressed="false"><i></i>Desktop alerts</button>
+      <button type="button" class="btn" id="refresh-btn" title="Poll GitLab now (r)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>
+        Refresh
+      </button>
     </div>
+  </div>
+</header>
 
-    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-      <div class="flex items-center overflow-x-auto pb-1 md:pb-0 gap-1 text-xs font-medium">
-        <button onclick="setFilter('active')" id="tab-active" class="px-3 py-1.5 rounded-lg bg-orange-600 text-white font-semibold transition-all">
-          Active (Running & Pending)
-        </button>
-        <button onclick="setFilter('all')" id="tab-all" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all">
-          All
-        </button>
-        <button onclick="setFilter('failed')" id="tab-failed" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all">
-          Failed
-        </button>
-        <button onclick="setFilter('success')" id="tab-success" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all">
-          Success
-        </button>
-      </div>
+<main class="wrap">
+  <div class="alert" id="alert" role="alert" hidden><strong>GitLab</strong><span id="alert-text"></span></div>
 
-      <div class="flex items-center gap-2">
-        <div class="relative flex-1 md:w-64">
-          <input
-            id="search-input"
-            type="text"
-            oninput="renderPipelines()"
-            placeholder="Filter by project, branch, sha..."
-            class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500"
-          >
-          <span class="absolute left-2.5 top-2 text-slate-500 text-xs">/</span>
-        </div>
-
-        <button onclick="toggleGrouping()" id="view-mode-btn" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs text-slate-300 font-medium transition-colors">
-          Group by project: <span id="grouping-label" class="font-bold text-orange-400">ON</span>
-        </button>
-      </div>
+  <section class="gauge" aria-label="Pipeline status across the group">
+    <div class="pipe" id="pipe"></div>
+    <div class="readout">
+      <ul class="tally" id="tally"></ul>
+      <p class="scope" id="scope"></p>
     </div>
+  </section>
 
-    <div id="toast-banner" class="hidden transition-all duration-300 p-4 rounded-xl border flex items-center justify-between text-sm">
-      <div class="flex items-center gap-3">
-        <div>
-          <p id="toast-title" class="font-semibold text-white"></p>
-          <p id="toast-msg" class="text-xs text-slate-300 mt-0.5"></p>
-        </div>
+  <div class="board">
+    <section>
+      <div class="toolbar">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <label class="search"><kbd>/</kbd><input id="q" type="search" placeholder="Project, branch, SHA or author" autocomplete="off" aria-label="Filter pipelines"></label>
+        <label class="toggle"><input type="checkbox" id="grouped"> Group by project</label>
       </div>
-      <button onclick="hideToast()" class="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800/60">Dismiss</button>
-    </div>
-
-    <div id="pipelines-container" class="space-y-4">
-      <div class="text-center py-16 text-slate-500">
-        <p class="text-sm">Loading GitLab pipelines data...</p>
+      <div class="table-wrap">
+        <table class="grid" id="grid">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th class="c-project">Project</th>
+              <th>Ref</th>
+              <th class="c-pid">Pipeline</th>
+              <th class="c-src">Trigger</th>
+              <th class="c-author">Author</th>
+              <th class="num">Duration</th>
+              <th class="num c-upd">Updated</th>
+            </tr>
+          </thead>
+          <tbody id="rows"><tr class="empty"><td colspan="8">Connecting to allpipes…</td></tr></tbody>
+        </table>
       </div>
-    </div>
+    </section>
 
-    <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden mt-8">
-      <div class="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-        <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-          Recent Activity & Transition Events
-        </h3>
-        <span id="event-count" class="text-xs text-slate-500">0 events</span>
-      </div>
-      <div id="events-log" class="divide-y divide-slate-800/60 max-h-56 overflow-y-auto font-mono text-xs">
-        <div class="px-4 py-3 text-slate-500 text-center">No events recorded yet in this session.</div>
-      </div>
-    </div>
+    <aside class="log" aria-label="Activity">
+      <h2>Activity <span id="log-count"></span></h2>
+      <ol id="log"></ol>
+    </aside>
+  </div>
+</main>
 
-  </main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <footer class="border-t border-slate-900 bg-slate-950 py-4 px-4 text-center text-xs text-slate-500">
-    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-      <p>allpipes • Real-time GitLab Pipeline Monitor</p>
-      <p id="last-updated-text">Last check: pending...</p>
-    </div>
-  </footer>
+<script>
+const $ = (id) => document.getElementById(id);
 
-  <script>
-    let audioCtx = null;
-    let soundEnabled = true;
+const store = {
+  get(key, fallback) {
+    try {
+      const v = localStorage.getItem('allpipes.' + key);
+      return v === null ? fallback : JSON.parse(v);
+    } catch { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem('allpipes.' + key, JSON.stringify(value)); } catch {}
+  },
+};
 
-    function initAudio() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
+const STATUS = {
+  running: ['running', 'running'],
+  canceling: ['canceling', 'running'],
+  created: ['created', 'queued'],
+  pending: ['pending', 'queued'],
+  preparing: ['preparing', 'queued'],
+  waiting_for_resource: ['waiting', 'queued'],
+  waiting_for_callback: ['callback', 'queued'],
+  success: ['passed', 'passed'],
+  failed: ['failed', 'failed'],
+  canceled: ['canceled', 'other'],
+  skipped: ['skipped', 'other'],
+  manual: ['manual', 'other'],
+  scheduled: ['scheduled', 'other'],
+};
+const status = (s) => {
+  const [label, cat] = STATUS[s] || [s || 'unknown', 'other'];
+  return { label, cat };
+};
+const isActive = (p) => ['running', 'queued'].includes(status(p.status).cat);
+
+const SOURCES = {
+  merge_request_event: 'MR',
+  parent_pipeline: 'child',
+  pipeline: 'upstream',
+  external_pull_request_event: 'PR',
+  ondemand_dast_scan: 'dast',
+  security_orchestration_policy: 'policy',
+};
+
+const svg = (body) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICONS = {
+  running: svg('<circle cx="8" cy="8" r="6" opacity=".3"/><path d="M8 2a6 6 0 0 1 6 6"/>'),
+  queued: svg('<circle cx="8" cy="8" r="6" stroke-dasharray="3.2 2.8"/>'),
+  passed: svg('<path d="M3.5 8.5l3 3 6-7" stroke-width="2.3"/>'),
+  failed: svg('<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke-width="2.3"/>'),
+  canceled: svg('<circle cx="8" cy="8" r="6"/><path d="M4 12l8-8"/>'),
+  skipped: svg('<path d="M3 4l4 4-4 4M9 4l4 4-4 4"/>'),
+  manual: svg('<path d="M5.5 3.5v9l6.5-4.5z" fill="currentColor"/>'),
+  scheduled: svg('<circle cx="8" cy="8" r="6"/><path d="M8 5v3.3l2.2 1.4"/>'),
+};
+const icon = (s) => ICONS[s] || ICONS[status(s).cat] || svg('<circle cx="8" cy="8" r="2" fill="currentColor"/>');
+
+const VIEWS = {
+  all: { label: 'All', match: () => true, count: (s) => s.total_pipelines, empty: 'No pipelines in this group yet.' },
+  active: { label: 'Active', match: isActive, count: (s) => s.active, empty: 'Nothing is running or queued right now.' },
+  failed: { label: 'Failed', match: (p) => p.status === 'failed', count: (s) => s.failed, empty: 'No failed pipelines among the latest runs.' },
+  passed: { label: 'Passed', match: (p) => p.status === 'success', count: (s) => s.passed, empty: 'No passed pipelines among the latest runs.' },
+};
+const CATEGORIES = [
+  ['running', 'running'],
+  ['queued', 'queued'],
+  ['failed', 'failed'],
+  ['passed', 'passed'],
+  ['other', 'other'],
+];
+
+const state = {
+  snap: null,
+  view: VIEWS[store.get('view')] ? store.get('view') : 'all',
+  grouped: store.get('grouped', false),
+  sound: store.get('sound', false),
+  alerts: store.get('alerts', false),
+  connected: false,
+  lastSeq: null,
+};
+
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? esc(u) : '#');
+const ext = 'target="_blank" rel="noopener"';
+
+function fmtDur(sec) {
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, r = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(r)}` : `${Math.floor(s / 60)}:${pad(r)}`;
+}
+
+function elapsed(p, now = Date.now()) {
+  if (!isActive(p) && p.duration > 0) return p.duration;
+  if (p.started_at) {
+    const end = p.finished_at ? Date.parse(p.finished_at) : now;
+    return Math.max(0, (end - Date.parse(p.started_at)) / 1000);
+  }
+  return 0;
+}
+
+function durationText(p) {
+  const d = elapsed(p);
+  if (d > 0) return fmtDur(d);
+  return status(p.status).cat === 'queued' ? 'queued' : '–';
+}
+
+const lastActivity = (p) => Date.parse(p.finished_at || p.updated_at);
+
+function ago(ms, now = Date.now()) {
+  const d = (now - ms) / 1000;
+  if (d < 60) return 'just now';
+  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
+  if (d < 604800) return `${Math.floor(d / 86400)}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+const clock = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const stamp = (ms) => new Date(ms).toLocaleString();
+
+function relPath(p) {
+  const group = state.snap?.group?.full_path;
+  const path = p.project_path || p.project_name || '';
+  return group && path.startsWith(group + '/') ? path.slice(group.length + 1) : path;
+}
+
+function refLabel(ref) {
+  const mr = /^refs\/merge-requests\/(\d+)\//.exec(ref || '');
+  return mr ? '!' + mr[1] : ref || '';
+}
+
+function pill(s) {
+  const st = status(s);
+  return `<span class="st c-${st.cat}${st.cat === 'running' ? ' spin' : ''}">${icon(s)}${esc(st.label)}</span>`;
+}
+
+function projectCell(p) {
+  const path = relPath(p);
+  const cut = path.lastIndexOf('/');
+  const ns = cut >= 0 ? `<span class="ns">${esc(path.slice(0, cut + 1))}</span>` : '';
+  return `<a class="proj" href="${safeUrl(p.project_web_url)}" ${ext}>${ns}<b>${esc(path.slice(cut + 1))}</b></a>`;
+}
+
+function refCell(p) {
+  const label = esc(refLabel(p.ref));
+  const mr = /^refs\/merge-requests\/(\d+)\//.exec(p.ref || '');
+  const ref = mr
+    ? `<a class="ref" href="${safeUrl(p.project_web_url)}/-/merge_requests/${mr[1]}" ${ext} title="${esc(p.ref)}">${label}</a>`
+    : `<span class="ref" title="${esc(p.ref)}">${label}</span>`;
+  const sha = p.sha ? `<a class="sha" href="${safeUrl(p.project_web_url)}/-/commit/${esc(p.sha)}" ${ext}>${esc(p.sha.slice(0, 8))}</a>` : '';
+  return `<div class="refcell">${ref}${sha}</div>`;
+}
+
+function row(p) {
+  const live = status(p.status).cat === 'running' && p.started_at;
+  const last = lastActivity(p);
+  return `<tr>
+    <td>${pill(p.status)}</td>
+    <td class="c-project">${projectCell(p)}</td>
+    <td>${refCell(p)}</td>
+    <td class="c-pid"><a class="pid" href="${safeUrl(p.web_url)}" ${ext}>#${esc(p.id)}</a></td>
+    <td class="c-src muted">${esc(SOURCES[p.source] || p.source)}</td>
+    <td class="c-author"><div class="who" title="${esc(p.user?.username)}">${esc(p.user?.name)}</div></td>
+    <td class="num${live ? ' live' : ''}"${live ? ` data-start="${Date.parse(p.started_at)}"` : ''}>${durationText(p)}</td>
+    <td class="num c-upd muted" data-ago="${last}" title="${esc(stamp(last))}">${ago(last)}</td>
+  </tr>`;
+}
+
+function emptyRow(text) {
+  return `<tr class="empty"><td colspan="8">${esc(text)}</td></tr>`;
+}
+
+function visiblePipelines() {
+  const q = $('q').value.trim().toLowerCase();
+  const view = VIEWS[state.view];
+  return state.snap.pipelines.filter((p) => {
+    if (!view.match(p)) return false;
+    if (!q) return true;
+    return [p.project_path, p.ref, refLabel(p.ref), p.sha, String(p.id), p.status, p.user?.name, p.user?.username]
+      .some((f) => (f || '').toLowerCase().includes(q));
+  });
+}
+
+function renderTable() {
+  const snap = state.snap;
+  const rows = $('rows');
+  $('grid').classList.toggle('grouped', state.grouped);
+  if (!snap) return;
+  if (!snap.ready) {
+    rows.innerHTML = emptyRow(snap.error ? 'Waiting for GitLab to respond. See the message above.' : `Loading pipelines from ${snap.group.full_path}…`);
+    return;
+  }
+  const list = visiblePipelines();
+  if (!list.length) {
+    const q = $('q').value.trim();
+    rows.innerHTML = emptyRow(q ? `No pipelines match “${q}”.` : snap.stats.total_projects === 0 ? 'This group has no projects.' : VIEWS[state.view].empty);
+    return;
+  }
+  if (!state.grouped) {
+    rows.innerHTML = list.map(row).join('');
+    return;
+  }
+  const byProject = new Map();
+  for (const p of list) {
+    if (!byProject.has(p.project_id)) byProject.set(p.project_id, []);
+    byProject.get(p.project_id).push(p);
+  }
+  let html = '';
+  for (const [projectId, pipes] of byProject) {
+    const history = snap.pipelines
+      .filter((p) => p.project_id === projectId)
+      .sort((a, b) => b.id - a.id)
+      .map((p) => `<i class="c-${status(p.status).cat}" title="#${esc(p.id)} ${esc(status(p.status).label)} on ${esc(refLabel(p.ref))}"></i>`)
+      .join('');
+    html += `<tr class="head"><th colspan="8">${projectCell(pipes[0])}<span class="history">${history}</span><span class="count">${pipes.length} shown</span></th></tr>`;
+    html += pipes.map(row).join('');
+  }
+  rows.innerHTML = html;
+}
+
+function renderTabs() {
+  const stats = state.snap?.stats || {};
+  $('tabs').innerHTML = Object.entries(VIEWS).map(([key, v], i) =>
+    `<button type="button" class="tab" role="tab" aria-selected="${key === state.view}" data-view="${key}" title="${i + 1}">${v.label}<span>${v.count(stats) ?? 0}</span></button>`
+  ).join('');
+}
+
+function renderGauge() {
+  const s = state.snap.stats;
+  const counts = { running: s.running, queued: s.queued, failed: s.failed, passed: s.passed, other: s.other };
+  $('pipe').innerHTML = CATEGORIES
+    .filter(([cat]) => counts[cat] > 0)
+    .map(([cat, label]) => `<span class="c-${cat}${cat === 'running' ? ' flow' : ''}" style="--n:${counts[cat]}" title="${counts[cat]} ${label}"></span>`)
+    .join('');
+  $('pipe').setAttribute('aria-label', CATEGORIES.map(([cat, label]) => `${counts[cat]} ${label}`).join(', '));
+  $('tally').innerHTML = CATEGORIES.map(([cat, label]) =>
+    `<li class="c-${cat}${counts[cat] ? '' : ' zero'}"><b>${counts[cat]}</b>${label}</li>`
+  ).join('');
+  const each = state.snap.pipelines_per_project;
+  $('scope').textContent = `${s.total_projects} projects · last ${each} pipeline${each === 1 ? '' : 's'} each`;
+}
+
+function renderLog() {
+  const events = state.snap.events || [];
+  $('log-count').textContent = events.length || '';
+  if (!events.length) {
+    $('log').innerHTML = '<li class="none">Status changes show up here as they happen.</li>';
+    return;
+  }
+  $('log').innerHTML = events.slice(0, 60).map((e) => {
+    const p = e.pipeline;
+    const to = status(e.new_status);
+    const from = e.previous_status ? status(e.previous_status) : null;
+    const how = from
+      ? `<span class="c-${from.cat}">${esc(from.label)}</span> → <span class="c-${to.cat}">${esc(to.label)}</span>`
+      : `new · <span class="c-${to.cat}">${esc(to.label)}</span>`;
+    return `<li>
+      <time datetime="${esc(e.timestamp)}">${clock(e.timestamp)}</time>
+      <div class="what"><a href="${safeUrl(p.web_url)}" ${ext}><b>${esc(relPath(p))}</b></a><span class="mono">${esc(refLabel(p.ref))}</span></div>
+      <div class="how">${how}</div>
+    </li>`;
+  }).join('');
+}
+
+function renderConn() {
+  const snap = state.snap;
+  let cat = 'other', text = 'Connecting';
+  if (!state.connected && snap) {
+    cat = 'failed'; text = 'Reconnecting to allpipes…';
+  } else if (snap && !snap.ready) {
+    cat = snap.error ? 'failed' : 'queued'; text = 'Loading pipelines…';
+  } else if (snap) {
+    cat = snap.error ? 'failed' : 'passed';
+    const secs = Math.max(0, Math.round((Date.now() - Date.parse(snap.stats.last_poll_time)) / 1000));
+    text = `polled ${secs < 60 ? secs + 's' : Math.floor(secs / 60) + 'm'} ago · every ${snap.poll_interval}s`;
+  }
+  $('conn').className = `conn c-${cat}`;
+  $('conn-text').textContent = text;
+}
+
+function renderHeader() {
+  const g = state.snap.group;
+  $('group').textContent = g.full_path || g.name;
+  $('group').href = safeUrl(g.web_url);
+  $('alert').hidden = !state.snap.error;
+  $('alert-text').textContent = state.snap.error || '';
+  const active = state.snap.stats.active;
+  document.title = `${active ? `(${active}) ` : ''}${g.full_path} · allpipes`;
+  setFavicon(state.snap.stats.running > 0 ? '--run' : '--ink');
+}
+
+let faviconToken = '';
+function setFavicon(token) {
+  if (token === faviconToken) return;
+  faviconToken = token;
+  const color = getComputedStyle(document.documentElement).getPropertyValue(token).trim() || '#161b1e';
+  const mark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="${color}"><path d="M3.5 6H9a5 5 0 0 1 5 5v6.5" stroke-width="3.6"/><path d="M2.5 2v8M10 17.5h8" stroke-width="2.2"/></svg>`;
+  $('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(mark);
+}
+
+function renderPrefs() {
+  $('sound-btn').setAttribute('aria-pressed', state.sound);
+  const btn = $('alerts-btn');
+  if (!('Notification' in window)) {
+    btn.hidden = true;
+    return;
+  }
+  const denied = Notification.permission === 'denied';
+  btn.disabled = denied;
+  btn.title = denied ? 'Notifications are blocked in your browser settings' : 'Show a desktop notification when a pipeline passes or fails';
+  btn.setAttribute('aria-pressed', state.alerts && Notification.permission === 'granted');
+}
+
+function renderAll() {
+  renderTabs();
+  if (!state.snap) return;
+  renderHeader();
+  renderConn();
+  renderGauge();
+  renderTable();
+  renderLog();
+}
+
+let audio = null;
+function chime(notes) {
+  if (!state.sound) return;
+  try {
+    audio ||= new AudioContext();
+    if (audio.state === 'suspended') audio.resume();
+    const t0 = audio.currentTime + 0.02;
+    for (const [freq, at, len] of notes) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t0 + at);
+      gain.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t0 + at);
+      osc.stop(t0 + at + len + 0.05);
     }
+  } catch {}
+}
+const CHIME_PASSED = [[659, 0, 0.2], [880, 0.12, 0.35]];
+const CHIME_FAILED = [[311, 0, 0.3], [233, 0.22, 0.45]];
 
-    function playTone(freq, type, duration, delay = 0) {
-      if (!soundEnabled) return;
-      initAudio();
-      setTimeout(() => {
-        try {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = type;
-          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-          gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start();
-          osc.stop(audioCtx.currentTime + duration);
-        } catch(e) {}
-      }, delay);
-    }
+function announce(e) {
+  const p = e.pipeline;
+  const st = status(e.new_status);
+  const what = `${relPath(p)} ${st.label}`;
+  const detail = `${refLabel(p.ref)} · #${p.id}${elapsed(p) > 0 ? ' · ' + fmtDur(elapsed(p)) : ''}`;
 
-    function playSuccessChime() {
-      playTone(523.25, 'triangle', 0.2, 0);
-      playTone(659.25, 'triangle', 0.2, 100);
-      playTone(783.99, 'triangle', 0.4, 200);
-    }
+  const el = document.createElement('div');
+  el.className = `toast c-${st.cat}`;
+  el.innerHTML = `${icon(e.new_status)}
+    <div><strong>${esc(relPath(p))} <em>${esc(st.label)}</em></strong><small>${esc(detail)}</small></div>
+    <a href="${safeUrl(p.web_url)}" ${ext}>Open</a>
+    <button type="button" aria-label="Dismiss">×</button>`;
+  el.querySelector('button').addEventListener('click', () => el.remove());
+  $('toasts').prepend(el);
+  while ($('toasts').children.length > 4) $('toasts').lastElementChild.remove();
+  setTimeout(() => el.remove(), e.new_status === 'failed' ? 20000 : 8000);
 
-    function playFailAlarm() {
-      playTone(300, 'sawtooth', 0.25, 0);
-      playTone(220, 'sawtooth', 0.35, 180);
-    }
+  chime(e.new_status === 'failed' ? CHIME_FAILED : CHIME_PASSED);
+  if (state.alerts && 'Notification' in window && Notification.permission === 'granted') {
+    try { new Notification(what, { body: detail, tag: `allpipes-${p.id}` }); } catch {}
+  }
+}
 
-    function toggleSound() {
-      soundEnabled = !soundEnabled;
-      const text = document.getElementById('sound-text');
-      if (soundEnabled) {
-        text.textContent = 'Sound: ON';
-        playSuccessChime();
-      } else {
-        text.textContent = 'Sound: OFF';
-      }
-    }
+function apply(snap) {
+  const events = snap.events || [];
+  const newest = events.length ? events[0].seq : 0;
+  if (state.lastSeq !== null && newest > state.lastSeq) {
+    events
+      .filter((e) => e.seq > state.lastSeq && (e.new_status === 'failed' || e.new_status === 'success'))
+      .reverse()
+      .forEach(announce);
+  }
+  state.lastSeq = newest;
+  state.snap = snap;
+  $('refresh-btn').classList.remove('busy');
+  renderAll();
+}
 
-    function requestNotificationPermission() {
-      if (!("Notification" in window)) {
-        alert("This browser does not support desktop notifications.");
-        return;
-      }
-      Notification.requestPermission().then(permission => {
-        const text = document.getElementById('notify-text');
-        if (permission === "granted") {
-          text.textContent = "Notifications: ON";
-          new Notification("allpipes", {
-            body: "Desktop notifications enabled successfully.",
-            icon: "https://about.gitlab.com/images/press/gitlab-logo-500.png"
-          });
-        } else {
-          text.textContent = "Notifications: BLOCKED";
-        }
-      });
-    }
+function connect() {
+  const source = new EventSource('api/events');
+  source.addEventListener('snapshot', (e) => {
+    state.connected = true;
+    try { apply(JSON.parse(e.data)); } catch (err) { console.error('allpipes: bad snapshot', err); }
+  });
+  source.onopen = () => { state.connected = true; renderConn(); };
+  source.onerror = () => { state.connected = false; renderConn(); };
+}
 
-    function sendDesktopNotification(title, body) {
-      if ("Notification" in window && Notification.permission === "granted") {
-        try {
-          new Notification(title, {
-            body: body,
-            icon: "https://about.gitlab.com/images/press/gitlab-logo-500.png"
-          });
-        } catch(e) {}
-      }
-    }
+function setView(view) {
+  if (!VIEWS[view]) return;
+  state.view = view;
+  store.set('view', view);
+  renderTabs();
+  renderTable();
+}
 
-    let currentSnapshot = null;
-    let activeFilter = 'active';
-    let groupByProject = true;
-    let knownStatusMap = new Map();
+async function refresh() {
+  const btn = $('refresh-btn');
+  btn.classList.add('busy');
+  setTimeout(() => btn.classList.remove('busy'), 4000);
+  try { await fetch('api/refresh', { method: 'POST' }); } catch {}
+}
 
-    function setFilter(filter) {
-      activeFilter = filter;
-      ['active', 'all', 'failed', 'success'].forEach(f => {
-        const btn = document.getElementById(`tab-${f}`);
-        if (f === filter) {
-          btn.className = "px-3 py-1.5 rounded-lg bg-orange-600 text-white font-semibold transition-all shadow-sm";
-        } else {
-          btn.className = "px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all";
-        }
-      });
-      renderPipelines();
-    }
+$('tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-view]');
+  if (tab) setView(tab.dataset.view);
+});
+$('q').addEventListener('input', renderTable);
+$('grouped').checked = state.grouped;
+$('grouped').addEventListener('change', (e) => {
+  state.grouped = e.target.checked;
+  store.set('grouped', state.grouped);
+  renderTable();
+});
+$('refresh-btn').addEventListener('click', refresh);
+$('sound-btn').addEventListener('click', () => {
+  state.sound = !state.sound;
+  store.set('sound', state.sound);
+  renderPrefs();
+  chime(CHIME_PASSED);
+});
+$('alerts-btn').addEventListener('click', async () => {
+  if (!state.alerts && Notification.permission !== 'granted') {
+    if (await Notification.requestPermission() !== 'granted') return renderPrefs();
+  }
+  state.alerts = !state.alerts;
+  store.set('alerts', state.alerts);
+  renderPrefs();
+});
 
-    function toggleGrouping() {
-      groupByProject = !groupByProject;
-      document.getElementById('grouping-label').textContent = groupByProject ? 'ON' : 'OFF';
-      renderPipelines();
-    }
+document.addEventListener('keydown', (e) => {
+  const typing = e.target.matches('input, textarea, select');
+  const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+  if (e.key === 'Escape' && e.target === $('q')) {
+    $('q').value = '';
+    $('q').blur();
+    renderTable();
+  } else if (typing || !plain) {
+    return;
+  } else if (e.key === '/') {
+    e.preventDefault();
+    $('q').focus();
+  } else if (e.key >= '1' && e.key <= '4') {
+    setView(Object.keys(VIEWS)[Number(e.key) - 1]);
+  } else if (e.key === 'r') {
+    refresh();
+  }
+});
 
-    function connectSSE() {
-      const connStatus = document.getElementById('conn-status');
-      const evtSource = new EventSource('/api/events');
+setInterval(() => {
+  const now = Date.now();
+  document.querySelectorAll('[data-start]').forEach((el) => {
+    el.textContent = fmtDur((now - Number(el.dataset.start)) / 1000);
+  });
+  document.querySelectorAll('[data-ago]').forEach((el) => {
+    el.textContent = ago(Number(el.dataset.ago), now);
+  });
+  if (state.snap) renderConn();
+}, 1000);
 
-      evtSource.onopen = () => {
-        connStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Live SSE</span>';
-        connStatus.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
-      };
-
-      evtSource.addEventListener('snapshot', (e) => {
-        try {
-          const snapshot = JSON.parse(e.data);
-          handleSnapshot(snapshot);
-        } catch (err) {}
-      });
-
-      evtSource.onerror = () => {
-        connStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400"></span><span>Reconnecting...</span>';
-        connStatus.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30";
-      };
-    }
-
-    async function fetchInitialStatus() {
-      try {
-        const resp = await fetch('/api/status');
-        if (resp.ok) {
-          const snapshot = await resp.json();
-          handleSnapshot(snapshot);
-        }
-      } catch (e) {}
-    }
-
-    async function triggerRefresh() {
-      const icon = document.getElementById('refresh-icon');
-      icon.classList.add('animate-spin');
-      try {
-        await fetch('/api/refresh', { method: 'POST' });
-      } catch (e) {}
-      setTimeout(() => icon.classList.remove('animate-spin'), 600);
-    }
-
-    function handleSnapshot(snapshot) {
-      currentSnapshot = snapshot;
-
-      if (snapshot.pipelines) {
-        snapshot.pipelines.forEach(p => {
-          const prev = knownStatusMap.get(p.id);
-          if (prev && prev !== p.status) {
-            if (p.status === 'failed') {
-              playFailAlarm();
-              showToast('Pipeline Failed', `Project ${p.project_name} on ref ${p.ref}`, 'rose');
-              sendDesktopNotification(`Pipeline Failed: ${p.project_name}`, `Ref ${p.ref} failed.`);
-            } else if (p.status === 'success' && prev === 'running') {
-              playSuccessChime();
-              showToast('Pipeline Succeeded', `Project ${p.project_name} on ref ${p.ref} passed.`, 'emerald');
-              sendDesktopNotification(`Pipeline Succeeded: ${p.project_name}`, `Ref ${p.ref} finished successfully.`);
-            }
-          }
-          knownStatusMap.set(p.id, p.status);
-        });
-      }
-
-      if (snapshot.group) {
-        const glink = document.getElementById('group-link');
-        glink.textContent = snapshot.group.full_path || snapshot.group.name || 'GitLab Group';
-        glink.href = snapshot.group.web_url || '#';
-      }
-
-      if (snapshot.stats) {
-        document.getElementById('stat-projects').textContent = snapshot.stats.total_projects || 0;
-        document.getElementById('stat-active').textContent = snapshot.stats.active_pipelines || 0;
-        document.getElementById('stat-running').textContent = snapshot.stats.running_count || 0;
-        document.getElementById('stat-pending').textContent = snapshot.stats.pending_count || 0;
-        document.getElementById('stat-failed').textContent = snapshot.stats.failed_count || 0;
-        document.getElementById('stat-success').textContent = snapshot.stats.success_count || 0;
-      }
-
-      const now = new Date();
-      document.getElementById('last-updated-text').textContent = `Last check: ${now.toLocaleTimeString()}`;
-
-      renderEvents(snapshot.events || []);
-      renderPipelines();
-    }
-
-    function renderEvents(events) {
-      const container = document.getElementById('events-log');
-      document.getElementById('event-count').textContent = `${events.length} event(s)`;
-      if (!events || events.length === 0) {
-        container.innerHTML = '<div class="px-4 py-3 text-slate-500 text-center">No events recorded yet in this session.</div>';
-        return;
-      }
-
-      let html = '';
-      events.slice(0, 20).forEach(evt => {
-        let tag = '[INFO]';
-        if (evt.new_status === 'failed') {
-          tag = '[FAILED]';
-        } else if (evt.new_status === 'success') {
-          tag = '[SUCCESS]';
-        } else if (evt.new_status === 'running') {
-          tag = '[RUNNING]';
-        }
-
-        const timeStr = new Date(evt.timestamp).toLocaleTimeString();
-        html += `
-          <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs hover:bg-slate-800/30 transition-colors">
-            <div class="flex items-center gap-2 overflow-hidden">
-              <span class="text-slate-400 font-bold">${tag}</span>
-              <span class="text-slate-300 truncate font-sans">${escapeHtml(evt.message)}</span>
-            </div>
-            <span class="text-slate-500 whitespace-nowrap text-[11px]">${timeStr}</span>
-          </div>
-        `;
-      });
-      container.innerHTML = html;
-    }
-
-    function renderPipelines() {
-      const container = document.getElementById('pipelines-container');
-      if (!currentSnapshot || !currentSnapshot.pipelines) return;
-
-      const searchTerm = (document.getElementById('search-input').value || '').toLowerCase().trim();
-
-      let list = currentSnapshot.pipelines.filter(p => {
-        if (activeFilter === 'active') {
-          const isActive = p.status === 'running' || p.status === 'pending' || p.status === 'preparing' || p.status === 'waiting_for_resource';
-          if (!isActive) return false;
-        } else if (activeFilter === 'failed') {
-          if (p.status !== 'failed') return false;
-        } else if (activeFilter === 'success') {
-          if (p.status !== 'success') return false;
-        }
-
-        if (searchTerm) {
-          const proj = (p.project_name || '').toLowerCase();
-          const ref = (p.ref || '').toLowerCase();
-          const sha = (p.sha || '').toLowerCase();
-          const author = (p.user ? p.user.name + ' ' + p.user.username : '').toLowerCase();
-          const idStr = String(p.id);
-          if (!proj.includes(searchTerm) && !ref.includes(searchTerm) && !sha.includes(searchTerm) && !author.includes(searchTerm) && !idStr.includes(searchTerm)) {
-            return false;
-          }
-        }
-
-        return true;
-      });
-
-      if (list.length === 0) {
-        container.innerHTML = `
-          <div class="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500">
-            <p class="font-medium text-slate-300">No pipelines found for the current filter.</p>
-            <p class="text-xs text-slate-500 mt-1">Try switching tabs or clearing the search query.</p>
-          </div>
-        `;
-        return;
-      }
-
-      if (groupByProject) {
-        const groups = {};
-        list.forEach(p => {
-          const key = p.project_name || 'Unknown';
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(p);
-        });
-
-        let html = '';
-        for (const [projectName, pList] of Object.entries(groups)) {
-          const first = pList[0];
-          html += `
-            <div class="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-              <div class="px-4 py-3 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <a href="${first.project_web_url || '#'}" target="_blank" class="font-bold text-white text-sm hover:text-orange-400 transition-colors">
-                    ${escapeHtml(projectName)}
-                  </a>
-                  <span class="text-xs text-slate-500">(${first.project_path || ''})</span>
-                </div>
-                <span class="text-xs text-slate-400 font-medium">${pList.length} pipeline(s)</span>
-              </div>
-              <div class="divide-y divide-slate-800">
-                ${pList.map(p => renderPipelineRow(p)).join('')}
-              </div>
-            </div>
-          `;
-        }
-        container.innerHTML = html;
-      } else {
-        let html = `
-          <div class="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm divide-y divide-slate-800">
-            ${list.map(p => renderPipelineRow(p, true)).join('')}
-          </div>
-        `;
-        container.innerHTML = html;
-      }
-    }
-
-    function renderPipelineRow(p, showProject = false) {
-      const statusBadge = getStatusBadge(p.status);
-      const durationStr = formatElapsed(p);
-      const isRunning = p.status === 'running';
-
-      return `
-        <div class="p-4 hover:bg-slate-850 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors ${isRunning ? 'bg-blue-950/10' : ''}">
-          <div class="flex items-start md:items-center gap-3 flex-1 min-w-0">
-            <div class="flex-shrink-0">
-              ${statusBadge}
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                ${showProject ? `
-                  <a href="${p.project_web_url || '#'}" target="_blank" class="font-bold text-white text-sm hover:text-orange-400 transition-colors">
-                    ${escapeHtml(p.project_name)}
-                  </a>
-                  <span class="text-slate-600">•</span>
-                ` : ''}
-                <a href="${p.web_url}" target="_blank" class="font-mono text-xs font-semibold text-orange-400 hover:underline">
-                  #${p.id}
-                </a>
-                <span class="text-slate-600">•</span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-xs font-medium text-slate-200 truncate max-w-xs" title="${p.ref}">
-                  <span class="truncate">${escapeHtml(p.ref)}</span>
-                </span>
-                <span class="font-mono text-xs text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60" title="${p.sha}">
-                  ${p.sha ? p.sha.substring(0, 8) : ''}
-                </span>
-              </div>
-
-              <div class="flex items-center gap-2 mt-1 text-xs text-slate-400">
-                ${p.user ? `
-                  <span class="flex items-center gap-1.5 text-slate-300">
-                    ${p.user.avatar_url ? `<img src="${p.user.avatar_url}" class="w-4 h-4 rounded-full" alt="">` : ''}
-                    <span>${escapeHtml(p.user.name || p.user.username)}</span>
-                  </span>
-                  <span class="text-slate-600">•</span>
-                ` : ''}
-                <span>Started ${timeAgo(p.created_at)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-4 self-end md:self-center flex-shrink-0">
-            <div class="text-right">
-              <span class="text-xs font-mono font-semibold ${isRunning ? 'text-blue-400 animate-pulse' : 'text-slate-300'}">
-                ${durationStr}
-              </span>
-              <div class="text-[10px] text-slate-500 mt-0.5">
-                ${p.source ? `via ${p.source}` : 'pipeline'}
-              </div>
-            </div>
-
-            <a href="${p.web_url}" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1 transition-all">
-              <span>View</span>
-            </a>
-          </div>
-        </div>
-      `;
-    }
-
-    function getStatusBadge(status) {
-      switch (status) {
-        case 'running':
-          return `
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-              <span class="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
-              RUNNING
-            </span>
-          `;
-        case 'pending':
-        case 'preparing':
-        case 'waiting_for_resource':
-          return `
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-              PENDING
-            </span>
-          `;
-        case 'success':
-          return `
-            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-              SUCCESS
-            </span>
-          `;
-        case 'failed':
-          return `
-            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
-              FAILED
-            </span>
-          `;
-        case 'canceled':
-          return `
-            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-700/50 text-slate-400 border border-slate-600/40">
-              CANCELED
-            </span>
-          `;
-        default:
-          return `
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400">
-              ${status ? status.toUpperCase() : 'UNKNOWN'}
-            </span>
-          `;
-      }
-    }
-
-    function formatElapsed(p) {
-      if (p.duration && p.duration > 0) {
-        const m = Math.floor(p.duration / 60);
-        const s = p.duration % 60;
-        return `${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
-      }
-      if (p.status === 'running') {
-        const start = p.started_at ? new Date(p.started_at) : new Date(p.created_at);
-        const diffSec = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
-        const m = Math.floor(diffSec / 60);
-        const s = diffSec % 60;
-        return `${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
-      }
-      if (p.status === 'pending') {
-        return 'queued';
-      }
-      return '-';
-    }
-
-    function timeAgo(dateStr) {
-      if (!dateStr) return '';
-      const d = new Date(dateStr);
-      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-      if (diffSec < 60) return `${diffSec}s ago`;
-      const diffMin = Math.floor(diffSec / 60);
-      if (diffMin < 60) return `${diffMin}m ago`;
-      const diffH = Math.floor(diffMin / 60);
-      if (diffH < 24) return `${diffH}h ago`;
-      return d.toLocaleDateString();
-    }
-
-    function showToast(title, msg, color) {
-      const banner = document.getElementById('toast-banner');
-      const titleEl = document.getElementById('toast-title');
-      const msgEl = document.getElementById('toast-msg');
-      titleEl.textContent = title;
-      msgEl.textContent = msg;
-
-      banner.className = `p-4 rounded-xl border flex items-center justify-between text-sm shadow-xl transition-all duration-300 ${
-        color === 'rose'
-          ? 'bg-rose-950/80 border-rose-700 text-rose-200'
-          : 'bg-emerald-950/80 border-emerald-700 text-emerald-200'
-      }`;
-      banner.classList.remove('hidden');
-
-      setTimeout(() => {
-        hideToast();
-      }, 8000);
-    }
-
-    function hideToast() {
-      const banner = document.getElementById('toast-banner');
-      banner.classList.add('hidden');
-    }
-
-    function escapeHtml(str) {
-      if (!str) return '';
-      return String(str).replace(/[&<>"']/g, function(m) {
-        return {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#039;'
-        }[m];
-      });
-    }
-
-    setInterval(() => {
-      if (currentSnapshot && currentSnapshot.pipelines) {
-        const hasRunning = currentSnapshot.pipelines.some(p => p.status === 'running');
-        if (hasRunning) {
-          renderPipelines();
-        }
-      }
-    }, 1000);
-
-    fetchInitialStatus();
-    connectSSE();
-  </script>
+renderTabs();
+renderPrefs();
+setFavicon('--ink');
+connect();
+</script>
 </body>
 </html>

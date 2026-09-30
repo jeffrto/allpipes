@@ -1,5 +1,5 @@
 # Binaries
-allpipes
+/allpipes
 *.exe
 *.exe~
 *.dll

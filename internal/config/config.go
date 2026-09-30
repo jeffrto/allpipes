@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/joho/godotenv"
 )
+
+const minPollInterval = 2 * time.Second
 
 type Config struct {
 	GitLabURL           string
@@ -27,117 +31,167 @@ type Config struct {
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
+	env := &envReader{}
 	cfg := &Config{
-		GitLabURL:           getEnv("GITLAB_URL", "https://gitlab.com"),
-		GitLabToken:         getEnv("GITLAB_TOKEN", ""),
-		Group:               getEnv("GITLAB_GROUP", ""),
-		PollInterval:        getEnvDuration("POLL_INTERVAL", 10*time.Second),
-		IncludeSubgroups:    getEnvBool("INCLUDE_SUBGROUPS", true),
-		PipelinesPerProject: getEnvInt("PIPELINES_PER_PROJECT", 3),
-		Concurrency:         getEnvInt("CONCURRENCY", 10),
-		Mode:                getEnv("MODE", "tui"),
-		Port:                getEnvInt("PORT", 8080),
-		Host:                getEnv("HOST", "0.0.0.0"),
+		GitLabURL:           env.str("GITLAB_URL", "https://gitlab.com"),
+		GitLabToken:         env.str("GITLAB_TOKEN", ""),
+		Group:               env.str("GITLAB_GROUP", ""),
+		PollInterval:        env.duration("POLL_INTERVAL", 10*time.Second),
+		IncludeSubgroups:    env.boolean("INCLUDE_SUBGROUPS", true),
+		PipelinesPerProject: env.integer("PIPELINES_PER_PROJECT", 3),
+		Concurrency:         env.integer("CONCURRENCY", 8),
+		Mode:                env.str("MODE", "tui"),
+		Port:                env.integer("PORT", 8080),
+		Host:                env.str("HOST", "127.0.0.1"),
+	}
+	if err := errors.Join(env.errs...); err != nil {
+		return nil, err
 	}
 
-	var (
-		webFlag          = flag.Bool("web", false, "Start Web Dashboard mode (HTTP server)")
-		tuiFlag          = flag.Bool("tui", false, "Start Terminal UI mode")
-		groupFlag        = flag.String("group", "", "GitLab Group path or ID (e.g. 'gitlab-org' or 'team/project')")
-		tokenFlag        = flag.String("token", "", "GitLab Personal/Group Access Token")
-		urlFlag          = flag.String("url", "", "GitLab base URL (default: https://gitlab.com)")
-		intervalFlag     = flag.Duration("interval", 0, "Polling interval (e.g. 5s, 10s, 30s)")
-		portFlag         = flag.Int("port", 0, "Port for Web Dashboard (default: 8080)")
-		hostFlag         = flag.String("host", "", "Host for Web Dashboard (default: 0.0.0.0)")
-		subgroupsFlag    = flag.Bool("subgroups", true, "Include projects in subgroups")
-		pipelinesNumFlag = flag.Int("recent", 0, "Number of recent pipelines to fetch per project (default: 3)")
-	)
-
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: allpipes [options]\n\n")
-		fmt.Fprintf(os.Stderr, "Real-time GitLab pipeline monitor across all projects in a group.\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nEnvironment Variables:\n")
-		fmt.Fprintf(os.Stderr, "  GITLAB_GROUP           GitLab Group path or ID\n")
-		fmt.Fprintf(os.Stderr, "  GITLAB_TOKEN           GitLab Personal Access Token with 'read_api'\n")
-		fmt.Fprintf(os.Stderr, "  GITLAB_URL             GitLab base URL (default: https://gitlab.com)\n")
-		fmt.Fprintf(os.Stderr, "  POLL_INTERVAL          Polling interval (e.g. 10s)\n")
-		fmt.Fprintf(os.Stderr, "  PORT                   Web server port (default: 8080)\n")
-		fmt.Fprintf(os.Stderr, "  MODE                   'tui' or 'web' (default: tui)\n")
-	}
-
+	var token string
+	var web, tui bool
+	flag.StringVar(&cfg.Group, "group", cfg.Group, "GitLab group path, ID or URL")
+	flag.StringVar(&token, "token", "", "GitLab access token with read_api scope (default $GITLAB_TOKEN)")
+	flag.StringVar(&cfg.GitLabURL, "url", cfg.GitLabURL, "GitLab base URL")
+	flag.DurationVar(&cfg.PollInterval, "interval", cfg.PollInterval, "polling interval")
+	flag.BoolVar(&cfg.IncludeSubgroups, "subgroups", cfg.IncludeSubgroups, "include projects in subgroups")
+	flag.IntVar(&cfg.PipelinesPerProject, "recent", cfg.PipelinesPerProject, "recent pipelines to track per project")
+	flag.IntVar(&cfg.Concurrency, "concurrency", cfg.Concurrency, "maximum concurrent API requests")
+	flag.BoolVar(&tui, "tui", false, "run the terminal UI (default)")
+	flag.BoolVar(&web, "web", false, "run the web dashboard")
+	flag.StringVar(&cfg.Host, "host", cfg.Host, "web dashboard listen address")
+	flag.IntVar(&cfg.Port, "port", cfg.Port, "web dashboard port")
+	flag.Usage = usage
 	flag.Parse()
 
-	if *webFlag {
+	if token != "" {
+		cfg.GitLabToken = token
+	}
+	switch {
+	case web && tui:
+		return nil, errors.New("choose either -web or -tui, not both")
+	case web:
 		cfg.Mode = "web"
-	} else if *tuiFlag {
+	case tui:
 		cfg.Mode = "tui"
-	}
-
-	if *groupFlag != "" {
-		cfg.Group = *groupFlag
-	}
-	if *tokenFlag != "" {
-		cfg.GitLabToken = *tokenFlag
-	}
-	if *urlFlag != "" {
-		cfg.GitLabURL = *urlFlag
-	}
-	if *intervalFlag > 0 {
-		cfg.PollInterval = *intervalFlag
-	}
-	if *portFlag > 0 {
-		cfg.Port = *portFlag
-	}
-	if *hostFlag != "" {
-		cfg.Host = *hostFlag
-	}
-	if flag.Lookup("subgroups") != nil {
-		cfg.IncludeSubgroups = *subgroupsFlag
-	}
-	if *pipelinesNumFlag > 0 {
-		cfg.PipelinesPerProject = *pipelinesNumFlag
 	}
 
 	cfg.GitLabURL = strings.TrimRight(cfg.GitLabURL, "/")
 	if !strings.HasPrefix(cfg.GitLabURL, "http://") && !strings.HasPrefix(cfg.GitLabURL, "https://") {
 		cfg.GitLabURL = "https://" + cfg.GitLabURL
 	}
+	cfg.Group = normalizeGroup(cfg.Group, cfg.GitLabURL)
 
-	return cfg, nil
+	return cfg, cfg.validate()
 }
 
-func getEnv(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
-		return strings.TrimSpace(val)
+func (c *Config) validate() error {
+	var errs []error
+	if c.Mode != "tui" && c.Mode != "web" {
+		errs = append(errs, fmt.Errorf("MODE must be \"tui\" or \"web\", got %q", c.Mode))
 	}
-	return defaultVal
+	if c.PollInterval < minPollInterval {
+		errs = append(errs, fmt.Errorf("poll interval must be at least %s, got %s", minPollInterval, c.PollInterval))
+	}
+	if c.PipelinesPerProject < 1 || c.PipelinesPerProject > 100 {
+		errs = append(errs, fmt.Errorf("recent pipelines per project must be between 1 and 100, got %d", c.PipelinesPerProject))
+	}
+	if c.Concurrency < 1 {
+		errs = append(errs, fmt.Errorf("concurrency must be at least 1, got %d", c.Concurrency))
+	}
+	if c.Port < 1 || c.Port > 65535 {
+		errs = append(errs, fmt.Errorf("port must be between 1 and 65535, got %d", c.Port))
+	}
+	return errors.Join(errs...)
 }
 
-func getEnvInt(key string, defaultVal int) int {
-	if val := os.Getenv(key); val != "" {
-		if i, err := strconv.Atoi(val); err == nil {
-			return i
+func normalizeGroup(group, baseURL string) string {
+	g := strings.TrimSpace(group)
+	if u, err := url.Parse(g); err == nil && u.Host != "" {
+		g = u.Path
+		if base, err := url.Parse(baseURL); err == nil && base.Host == u.Host {
+			g = strings.TrimPrefix(g, strings.TrimRight(base.Path, "/"))
 		}
 	}
-	return defaultVal
+	if i := strings.Index(g, "/-/"); i >= 0 {
+		g = g[:i]
+	}
+	g = strings.Trim(g, "/")
+	return strings.TrimPrefix(g, "groups/")
 }
 
-func getEnvBool(key string, defaultVal bool) bool {
-	if val := os.Getenv(key); val != "" {
-		if b, err := strconv.ParseBool(val); err == nil {
-			return b
-		}
-	}
-	return defaultVal
+func usage() {
+	out := flag.CommandLine.Output()
+	fmt.Fprint(out, `allpipes watches the CI pipelines of every project in a GitLab group.
+
+Usage:
+  allpipes -group <path|id|url> [options]
+
+Options:
+`)
+	flag.PrintDefaults()
+	fmt.Fprint(out, `
+Every option can also be set in the environment or a .env file:
+  GITLAB_GROUP, GITLAB_TOKEN, GITLAB_URL, MODE (tui|web), POLL_INTERVAL,
+  INCLUDE_SUBGROUPS, PIPELINES_PER_PROJECT, CONCURRENCY, HOST, PORT
+`)
 }
 
-func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
-	if val := os.Getenv(key); val != "" {
-		if d, err := time.ParseDuration(val); err == nil {
-			return d
-		}
+type envReader struct {
+	errs []error
+}
+
+func (r *envReader) lookup(key string) (string, bool) {
+	v, ok := os.LookupEnv(key)
+	v = strings.TrimSpace(v)
+	return v, ok && v != ""
+}
+
+func (r *envReader) str(key, def string) string {
+	if v, ok := r.lookup(key); ok {
+		return v
 	}
-	return defaultVal
+	return def
+}
+
+func (r *envReader) integer(key string, def int) int {
+	v, ok := r.lookup(key)
+	if !ok {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s: %q is not a whole number", key, v))
+		return def
+	}
+	return n
+}
+
+func (r *envReader) boolean(key string, def bool) bool {
+	v, ok := r.lookup(key)
+	if !ok {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s: %q is not true or false", key, v))
+		return def
+	}
+	return b
+}
+
+func (r *envReader) duration(key string, def time.Duration) time.Duration {
+	v, ok := r.lookup(key)
+	if !ok {
+		return def
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		return time.Duration(secs) * time.Second
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s: %q is not a duration like 10s or 1m", key, v))
+		return def
+	}
+	return d
 }
